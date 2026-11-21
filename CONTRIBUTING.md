@@ -157,6 +157,32 @@ Suppose we want admins to set a merchant's tier:
 
 See the [README](README.md#contributing) for a link back to this guide.
 
+## Adding / Updating a Translation
+
+The frontend (`frontend/`) uses [`react-i18next`](https://react.i18next.com/)
+for internationalisation. All translation strings live under
+`frontend/src/locales/<lang>.json`, keyed by feature area
+(e.g. `checkout.payNow`). `en.json` is the source of truth — every other
+locale file must have the exact same key structure.
+
+To add a new locale:
+
+1. Copy `frontend/src/locales/en.json` to `frontend/src/locales/<lang>.json`
+   and translate every value (never the keys).
+2. Register the new locale's `resources` entry in
+   `frontend/src/lib/i18n.ts`.
+3. Do not remove or rename a key in `en.json` without updating it in every
+   other locale file in the same PR — a missing key silently falls back to
+   English via `fallbackLng`.
+
+To add a new user-facing string in a component:
+
+1. Add the key to `frontend/src/locales/en.json` (and translate it in the
+   other locale files, or leave an English placeholder with a `// TODO`
+   comment if you don't speak the target language).
+2. In the component, call `const { t } = useTranslation();` and render
+   `t("area.key")` instead of a hardcoded string.
+
 ## Branch Protection Rules
 
 The `main` branch is protected with the following enforced settings:
