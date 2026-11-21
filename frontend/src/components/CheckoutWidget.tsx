@@ -53,7 +53,10 @@ export function CheckoutWidget({
       alert("Freighter wallet extension not found. Please install it.");
       return;
     }
-    await freighter.setAllowed();
+    const alreadyAllowed = await freighter.isAllowed?.();
+    if (!alreadyAllowed) {
+      await freighter.setAllowed();
+    }
     const address = await freighter.getPublicKey();
     setWalletAddress(address);
   }
