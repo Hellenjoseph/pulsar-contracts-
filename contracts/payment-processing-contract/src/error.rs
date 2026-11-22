@@ -47,6 +47,8 @@ pub enum PaymentError {
     InsufficientSignatures = 43,
 
     // General
+    /// Generic invalid input. Also returned when a payment or record
+    /// description exceeds `MAX_DESCRIPTION_LEN` (256 bytes) — see issue #328.
     InvalidInput = 50,
     // StorageError = 51 was removed: the variant was never returned by any
     // code path and only inflated the ABI. See issue SC-009.

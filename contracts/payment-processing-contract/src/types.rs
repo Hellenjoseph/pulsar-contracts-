@@ -69,6 +69,9 @@ pub struct PaymentOrder {
     pub payer: Address,
     pub token: Address,
     pub amount: i128,
+    /// Human-readable description of the order. Capped at
+    /// `helper::MAX_DESCRIPTION_LEN` (256 bytes); longer values are rejected
+    /// with `PaymentError::InvalidInput`.
     pub description: String,
     /// Unix timestamp (seconds) when the order expires. A value of `0`
     /// is treated as "never expires" (an order that does not expire).
@@ -94,6 +97,9 @@ pub struct PaymentRecord {
     pub pending_refund_amount: i128,
     pub status: PaymentStatus,
     pub paid_at: u64,
+    /// Description carried over from the originating [`PaymentOrder`].
+    /// Capped at `helper::MAX_DESCRIPTION_LEN` (256 bytes), matching the
+    /// limit enforced on orders.
     pub description: String,
     /// Metadata carried over from the originating [`PaymentOrder`], if any.
     pub metadata: Option<Map<String, String>>,
