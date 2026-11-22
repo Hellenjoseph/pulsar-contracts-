@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "generate:contract": "stellar contract bindings typescript --contract-id ${CONTRACT_ID:?CONTRACT_ID is required} --network ${NETWORK:-testnet} --output-dir src",
+    "build": "npm run generate:contract && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

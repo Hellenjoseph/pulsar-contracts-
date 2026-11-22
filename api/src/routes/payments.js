@@ -4,6 +4,8 @@ import { invoke, view } from "../contractClient.js";
 
 const router = Router();
 
+const MAX_PAGE_SIZE = parseInt(process.env.MAX_PAGE_SIZE, 10) || 100;
+
 /**
  * POST /api/payments
  * Body: { payer, order: { order_id, merchant_address, payer, token, amount, description, expires_at }, signature }
@@ -56,12 +58,22 @@ router.get("/", async (req, res, next) => {
       return res.status(422).json({ error: { code: "InvalidInput", message: "merchant query param required" } });
     }
 
+    const parsedLimit = parseInt(limit, 10);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > MAX_PAGE_SIZE) {
+      return res.status(422).json({
+        error: {
+          code: "InvalidInput",
+          message: `limit must be between 1 and ${MAX_PAGE_SIZE}`,
+        },
+      });
+    }
+
     const filter = buildFilter({ date_start, date_end, amount_min, amount_max, status });
 
     const result = await view("get_merchant_payment_history", [
       nativeToScVal(merchant, { type: "address" }),
       cursor ? nativeToScVal(Buffer.from(cursor), { type: "bytes" }) : xdr.ScVal.scvVoid(),
-      nativeToScVal(parseInt(limit, 10), { type: "u32" }),
+      nativeToScVal(parsedLimit, { type: "u32" }),
       filter,
       xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_field)]),
       xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_order)]),

@@ -14,6 +14,8 @@ npm run build && npm start  # production
 
 ## API
 
+All endpoints accept JSON request bodies up to **64kb**. Requests with a larger body are rejected with HTTP `413 Payload Too Large`.
+
 ### Register a webhook
 
 ```http

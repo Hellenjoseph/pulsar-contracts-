@@ -140,6 +140,41 @@ fn test_transfer_admin_success() {
     assert_eq!(count, 0);
 }
 
+/// SC-049: calling `transfer_admin` with `new_admin == current_admin` is a
+/// no-op. It must either succeed idempotently or return a defined error, and
+/// in both cases the stored admin (and `AdminConfig.admins[0]`) must remain
+/// the original admin so the two cannot diverge.
+#[test]
+fn test_transfer_admin_to_self() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.set_admin(&admins(&env, &admin), &1);
+
+    // Self-transfer: either an idempotent success or a defined PaymentError.
+    match client.try_transfer_admin(&admin, &admin) {
+        Ok(_) => {}
+        Err(Ok(err)) => {
+            // Any defined contract error is acceptable; a panic/trap is not.
+            let _ = err;
+        }
+        Err(Err(_)) => panic!("transfer_admin to self must not trap"),
+    }
+
+    // The admin key must be unchanged: the original admin still passes the
+    // admin-gated action, and a different address is still rejected.
+    let count = client.cleanup_expired_payments(&admins(&env, &admin));
+    assert_eq!(count, 0);
+    let stranger = Address::generate(&env);
+    assert_eq!(
+        client.try_cleanup_expired_payments(&admins(&env, &stranger)),
+        Err(Ok(PaymentError::Unauthorized))
+    );
+
+    // AdminConfig.admins[0] must still equal the stored admin.
+    let config = client.get_admin_config();
+    assert_eq!(config.admins.get(0).unwrap(), admin);
+}
+
 #[test]
 fn test_transfer_admin_unauthorized_fails() {
     let (env, client) = setup();
