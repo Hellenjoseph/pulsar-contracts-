@@ -191,14 +191,76 @@ Record, outside your terminal history:
 Only after this verification step should the mainnet contract ID be shared
 with downstream integrators or put in front of real payment volume.
 
+## Environment matrix
+
+The project runs four environments. Each has a distinct purpose, branch
+trigger, GitHub Actions environment, and secret — do not mix them up.
+
+| Environment | Purpose | Deploy trigger | GitHub environment | Secret(s) | Network |
+| --- | --- | --- | --- | --- | --- |
+| **local** | Day-to-day development, unit/integration tests | none (developer machine) | — | none (local `stellar keys`) | local sandbox / standalone |
+| **staging** | Pre-testnet validation on an isolated, stable environment | push to `develop` | `staging` | `STAGING_SECRET_KEY` | Soroban **Futurenet** (or a dedicated testnet account) |
+| **testnet** | Public integration testbed for downstream integrators | push to `main` | `testnet` | `TESTNET_SECRET_KEY` | Stellar testnet |
+| **mainnet** | Production, real-value traffic | manual only (this guide) | `mainnet` | dedicated mainnet deployer key in a secrets manager | Stellar public network |
+
+### Branch → environment mapping
+
+- `develop` → **staging**. Every push to `develop` deploys the contract to
+  Futurenet via the `deploy-staging` job in
+  [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Staging is the
+  first place a change runs against a live network; it is disposable and
+  may be reset at any time.
+- `main` → **testnet**. Pushes to `main` deploy to testnet via the
+  `deploy-testnet` job. Testnet is the stable, integrator-facing network, so
+  only changes that have already soaked on staging should reach `main`.
+- **mainnet** → manual only. There is no automated mainnet deploy; follow
+  the step-by-step flow in this guide. Mainnet deploys are intentionally
+  checklist-gated and performed by an operator.
+
+### Promotion flow
+
+```
+feature branch ──PR──▶ develop ──(auto)──▶ staging (Futurenet)
+                          │
+                          └──PR──▶ main ──(auto)──▶ testnet
+                                        │
+                                        └──(manual, this guide)──▶ mainnet
+```
+
+1. Land changes on a feature branch and open a PR against `develop`.
+2. Merging to `develop` auto-deploys to **staging**. Validate there,
+   including running the manual load-test workflow
+   ([`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml))
+   against the staging contract ID.
+3. Once staging is green and the load test passes, open a PR from `develop`
+   to `main`. Merging to `main` auto-deploys to **testnet**.
+4. After testnet has been validated by integrators, perform the manual
+   mainnet deployment described in this guide.
+
+### GitHub environments and secrets
+
+Configure these under **Settings → Environments** in the repository:
+
+- `staging` — holds `STAGING_SECRET_KEY` (a Futurenet/testnet key used only
+  for staging deploys). No required reviewers.
+- `testnet` — holds `TESTNET_SECRET_KEY` (the testnet deployer key).
+- `mainnet` — holds the mainnet deployer key; enable required reviewers so
+  a mainnet deploy cannot happen without a second pair of eyes.
+
+Each environment's secret is scoped to that environment only, so a staging
+job cannot read the testnet or mainnet keys.
+
 ## See also
 
 - [`README.md`](../README.md) — local/testnet setup, environment seeding,
   general contract usage.
+- [`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml) —
+  manual load-test workflow, run against staging before promoting to
+  testnet.
 - [`docs/reproducible-builds.md`](reproducible-builds.md) — rebuilding the
   WASM byte-for-byte to verify what was deployed.
 - [`docs/security-audit.md`](security-audit.md) — audit status and scope.
 - [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — the
-  `deploy-testnet` job this guide's mainnet flow mirrors (testnet deploys
-  are automated in CI; mainnet deploys are intentionally manual and
-  checklist-gated).
+  `deploy-staging` (Futurenet) and `deploy-testnet` jobs this guide's
+  mainnet flow mirrors (staging and testnet deploys are automated in CI;
+  mainnet deploys are intentionally manual and checklist-gated).
