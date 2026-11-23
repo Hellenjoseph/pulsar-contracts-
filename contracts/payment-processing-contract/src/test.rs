@@ -2249,8 +2249,8 @@ fn test_get_merchant_stats_unfiltered() {
     let (_pk1, sig1) = sign_order(&env, &order1);
     client.process_payment_with_signature(&payer, &order1, &sig1, &BytesN::from_array(&env, &[0u8; 32]));
 
-    // Query unfiltered stats
-    let stats = client.get_merchant_stats(&merchant, &None, &None);
+    // Query unfiltered stats (merchant queries their own stats)
+    let stats = client.get_merchant_payment_stats(&merchant, &merchant, &None, &None);
     assert_eq!(stats.merchant_address, merchant);
     assert_eq!(stats.total_payments, 1);
     assert_eq!(stats.total_volume, 1000);
@@ -2297,8 +2297,8 @@ fn test_get_merchant_stats_with_refunds() {
     env.ledger().with_mut(|l| l.timestamp = 3000);
     client.execute_refund(&merchant, &bytes(&env, "R1"));
 
-    // Query stats
-    let stats = client.get_merchant_stats(&merchant, &None, &None);
+    // Query stats (merchant queries their own stats)
+    let stats = client.get_merchant_payment_stats(&merchant, &merchant, &None, &None);
     assert_eq!(stats.total_payments, 1);
     assert_eq!(stats.total_volume, 1000);
     assert_eq!(stats.total_refunds, 1);

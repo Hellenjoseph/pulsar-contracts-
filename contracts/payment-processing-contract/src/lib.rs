@@ -1122,14 +1122,19 @@ impl PaymentContract {
 
     /// Return payment and refund statistics for a single merchant.
     ///
-    /// The merchant may query their own stats. An admin may query any merchant.
+    /// # Access control
+    /// Only the merchant whose stats are being queried, or the contract admin,
+    /// may call this function. Any other caller is rejected with
+    /// [`PaymentError::Unauthorized`]. This prevents third parties (e.g.
+    /// competitors) from reading a merchant's revenue and refund figures.
+    ///
     /// When no date range is supplied the pre-computed cached counters are
     /// returned in O(1). When a date range is supplied the function iterates
     /// the merchant's payment list and filters by `paid_at` timestamp.
     ///
     /// # Parameters
     /// - `caller` — The calling address; must be authenticated. Must be either
-    ///   `merchant` or an admin.
+    ///   `merchant` or the stored admin.
     /// - `merchant` — The merchant address whose stats are requested.
     /// - `date_start` — Optional Unix timestamp lower bound (inclusive).
     /// - `date_end` — Optional Unix timestamp upper bound (inclusive).
@@ -1139,8 +1144,8 @@ impl PaymentContract {
     /// total refund count, and total refund volume for the merchant.
     ///
     /// # Errors
-    /// - [`PaymentError::Unauthorized`] if `caller` is neither `merchant` nor an
-    ///   admin.
+    /// - [`PaymentError::Unauthorized`] if `caller` is neither `merchant` nor
+    ///   the stored admin.
     /// - [`PaymentError::ArithmeticError`] on volume overflow.
     pub fn get_merchant_stats(
         env: Env,
@@ -1149,12 +1154,12 @@ impl PaymentContract {
         date_start: Option<u64>,
         date_end: Option<u64>,
     ) -> Result<MerchantStats, PaymentError> {
+        storage::bump_instance_ttl(&env);
         caller.require_auth();
-        // Merchant can query their own stats, or admin can query any merchant
-        if caller != merchant {
-            let mut admins = Vec::new(&env);
-            admins.push_back(caller.clone());
-            helper::require_multi_admin(&env, admins)?;
+        // Only the merchant themselves or the admin may read merchant stats.
+        let is_admin = storage::get_admin(&env).map(|a| a == caller).unwrap_or(false);
+        if caller != merchant && !is_admin {
+            return Err(PaymentError::Unauthorized);
         }
 
         // If no date filter, return cached stats

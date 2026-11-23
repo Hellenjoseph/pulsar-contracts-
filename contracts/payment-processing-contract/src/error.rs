@@ -7,6 +7,9 @@ use soroban_sdk::contracterror;
 #[repr(u32)]
 pub enum PaymentError {
     // Auth
+    /// Caller is not permitted to perform this action. Also returned by
+    /// `get_merchant_payment_stats` when the caller is neither the admin nor
+    /// the merchant whose stats are being queried.
     Unauthorized = 1,
     AdminAlreadySet = 2,
 
