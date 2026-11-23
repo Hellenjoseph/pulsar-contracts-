@@ -119,7 +119,13 @@ export function CheckoutWidget({
         </div>
         <div className="flex justify-between">
           <dt>Amount</dt>
-          <dd className="font-medium text-[var(--color-text)]">{amount}</dd>
+          <dd
+            id="checkout-amount"
+            className="font-medium text-[var(--color-text)]"
+            aria-label={`Amount: ${amount}`}
+          >
+            {amount}
+          </dd>
         </div>
         <div className="flex justify-between">
           <dt>Token</dt>
