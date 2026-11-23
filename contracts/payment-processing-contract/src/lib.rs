@@ -38,6 +38,17 @@ use types::{
     RefundRecord, RefundStatus, SortField, SortOrder,
 };
 
+/// Minimum allowed cleanup period: 1 day (86 400 seconds).
+///
+/// A shorter period would cause `cleanup_expired_payments` to treat almost
+/// every payment as expired and delete it.
+pub const MIN_CLEANUP_PERIOD: u64 = 86_400;
+
+/// Maximum allowed cleanup period: 365 days (31 536 000 seconds).
+///
+/// A longer period would effectively prevent cleanup from ever running.
+pub const MAX_CLEANUP_PERIOD: u64 = 31_536_000;
+
 #[contract]
 pub struct PaymentContract;
 
@@ -1315,11 +1326,14 @@ impl PaymentContract {
     ///
     /// # Parameters
     /// - `admins` — Admin addresses that together satisfy the multi-sig threshold.
-    /// - `period` — Cleanup period in seconds. Must be greater than zero.
+    /// - `period` — Cleanup period in seconds. Must be within the inclusive
+    ///   range [`MIN_CLEANUP_PERIOD`, `MAX_CLEANUP_PERIOD`], i.e. between
+    ///   1 day (86 400 s) and 365 days (31 536 000 s).
     ///
     /// # Errors
     /// - [`PaymentError::Unauthorized`] if the admin multi-sig check fails.
-    /// - [`PaymentError::InvalidInput`] if `period` is zero.
+    /// - [`PaymentError::InvalidInput`] if `period` is outside the allowed
+    ///   range `[MIN_CLEANUP_PERIOD, MAX_CLEANUP_PERIOD]`.
     pub fn set_payment_cleanup_period(
         env: Env,
         admins: Vec<Address>,
@@ -1328,7 +1342,7 @@ impl PaymentContract {
         storage::bump_instance_ttl(&env);
         if storage::is_paused(&env) { return Err(PaymentError::ContractPaused); }
         helper::require_multi_admin(&env, admins)?;
-        if period == 0 {
+        if period < MIN_CLEANUP_PERIOD || period > MAX_CLEANUP_PERIOD {
             return Err(PaymentError::InvalidInput);
         }
         storage::set_cleanup_period(&env, period);
