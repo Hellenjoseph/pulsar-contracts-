@@ -68,6 +68,41 @@ export function createRouter(rpcUrl: string, contractId: string): express.Router
   router.use(requestIdMiddleware);
   router.use(express.json());
 
+  // ── Request correlation ────────────────────────────────────────────────────
+  //
+  // Every request carries an X-Request-ID. If the caller (e.g. the API
+  // gateway) already supplied one we reuse it so the ID stays consistent
+  // across services; otherwise we generate a UUID. The ID is echoed back on
+  // the response and included in every structured log entry.
+  router.use((req, res, next) => {
+    const incoming = req.header("X-Request-ID");
+    const requestId = incoming && incoming.trim() ? incoming.trim() : randomUUID();
+    res.locals.requestId = requestId;
+    res.set("X-Request-ID", requestId);
+    next();
+  });
+
+  function logRequest(req: express.Request, message: string, extra: Record<string, unknown> = {}) {
+    const requestId = (req.res?.locals.requestId as string | undefined) ?? "unknown";
+    console.log(
+      JSON.stringify({
+        level: "info",
+        service: "webhook",
+        requestId,
+        method: req.method,
+        path: req.originalUrl,
+        message,
+        timestamp: new Date().toISOString(),
+        ...extra,
+      })
+    );
+  }
+
+  function errorBody(req: express.Request, error: string, extra: Record<string, unknown> = {}) {
+    const requestId = (req.res?.locals.requestId as string | undefined) ?? "unknown";
+    return { error, requestId, ...extra };
+  }
+
   const metrics = {
     totalHealthCalls: 0,
     totalDeepCalls: 0,
@@ -194,6 +229,7 @@ export function createRouter(rpcUrl: string, contractId: string): express.Router
       );
     }
     const reg = registerWebhook(merchantAddress, url);
+    logRequest(req, "webhook registered", { merchantAddress });
     res.status(201).json(reg);
   });
 
@@ -267,6 +303,7 @@ export function createRouter(rpcUrl: string, contractId: string): express.Router
     try {
       await deliver(entry.url, entry.payload);
       dlq.remove(req.params.id);
+      logRequest(req, "DLQ entry replayed", { id: req.params.id });
       res
         .status(200)
         .json({ success: true, message: `Entry ${req.params.id} replayed and removed from DLQ.` });

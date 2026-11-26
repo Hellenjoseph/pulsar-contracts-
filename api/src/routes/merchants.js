@@ -24,6 +24,12 @@ router.post("/", async (req, res, next) => {
         },
       });
     }
+    console.log(JSON.stringify({
+      level: "info",
+      message: "Registering merchant",
+      requestId: req.id,
+      merchantAddress: merchant_address,
+    }));
     await invoke("register_merchant", [
       nativeToScVal(merchant_address, { type: "address" }),
       nativeToScVal(name, { type: "string" }),
@@ -31,7 +37,7 @@ router.post("/", async (req, res, next) => {
       nativeToScVal(contact_info, { type: "string" }),
       xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(category)]),
       xdr.ScVal.scvVoid(),
-    ]);
+    ], { requestId: req.id });
     res.status(201).json({ message: "Merchant registered" });
   } catch (err) {
     next(err);
@@ -53,7 +59,7 @@ router.get("/:id", async (req, res, next) => {
     }
     const result = await view("get_merchant", [
       nativeToScVal(req.params.id, { type: "address" }),
-    ]);
+    ], { requestId: req.id });
     res.json(scValToNative(result));
   } catch (err) {
     next(err);

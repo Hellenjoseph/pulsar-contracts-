@@ -1,4 +1,5 @@
 import { rpc, xdr } from "@stellar/stellar-sdk";
+import { randomUUID } from "crypto";
 import { allWebhooks } from "./store";
 import { deliver, WebhookPayload } from "./deliver";
 
@@ -100,7 +101,7 @@ export async function startListener(
         );
 
         for (const hook of hooks) {
-          deliver(hook.url, payload).catch(() => {});
+          deliver(hook.url, payload, requestId).catch(() => {});
         }
       }
     } catch (err) {

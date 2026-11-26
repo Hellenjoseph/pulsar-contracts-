@@ -25,6 +25,19 @@ const paymentsLimiter = rateLimit({
 });
 
 /**
+ * Resolve the correlation ID for the current request. The request-ID
+ * middleware attaches it to `req.id`; fall back to the response header
+ * (set by the middleware) so downstream calls always receive a value.
+ */
+function requestId(req) {
+  return req.id || res_getRequestId(req);
+}
+
+function res_getRequestId(req) {
+  return (req.res && req.res.getHeader && req.res.getHeader("X-Request-ID")) || undefined;
+}
+
+/**
  * POST /api/payments
  * Body: { payer, order: { order_id, merchant_address, payer, token, amount, description, expires_at }, signature }
  */
@@ -45,11 +58,17 @@ router.post("/", paymentsLimiter, async (req, res, next) => {
         return res.status(422).json({ error: { code: "InvalidAddress", message: `${field} is not a valid Stellar address` } });
       }
     }
-    await invoke("process_payment_with_signature", [
-      nativeToScVal(payer, { type: "address" }),
-      orderToScVal(order),
-      nativeToScVal(Buffer.from(signature, "hex"), { type: "bytes" }),
-    ]);
+    const requestIdValue = requestId(req);
+    req.log?.info?.({ requestId: requestIdValue, action: "process_payment" }, "Processing payment");
+    await invoke(
+      "process_payment_with_signature",
+      [
+        nativeToScVal(payer, { type: "address" }),
+        orderToScVal(order),
+        nativeToScVal(Buffer.from(signature, "hex"), { type: "bytes" }),
+      ],
+      { requestId: requestIdValue }
+    );
     res.status(201).json({ message: "Payment processed" });
   } catch (err) {
     next(err);
@@ -128,10 +147,16 @@ router.get("/:id", async (req, res, next) => {
     if (!validateStellarAddress(caller)) {
       return res.status(422).json({ error: { code: "InvalidAddress", message: "caller is not a valid Stellar address" } });
     }
-    const result = await view("get_payment_by_id", [
-      nativeToScVal(caller, { type: "address" }),
-      nativeToScVal(Buffer.from(req.params.id), { type: "bytes" }),
-    ]);
+    const requestIdValue = requestId(req);
+    req.log?.info?.({ requestId: requestIdValue, action: "get_payment_by_id" }, "Fetching payment");
+    const result = await view(
+      "get_payment_by_id",
+      [
+        nativeToScVal(caller, { type: "address" }),
+        nativeToScVal(Buffer.from(req.params.id), { type: "bytes" }),
+      ],
+      { requestId: requestIdValue }
+    );
     res.json(scValToNative(result));
   } catch (err) {
     next(err);
@@ -154,14 +179,20 @@ router.get("/", async (req, res, next) => {
 
     const filter = buildFilter({ date_start, date_end, amount_min, amount_max, status });
 
-    const result = await view("get_merchant_payment_history", [
-      nativeToScVal(merchant, { type: "address" }),
-      cursor ? nativeToScVal(Buffer.from(cursor), { type: "bytes" }) : xdr.ScVal.scvVoid(),
-      nativeToScVal(parseInt(limit, 10), { type: "u32" }),
-      filter,
-      xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_field)]),
-      xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_order)]),
-    ]);
+    const requestIdValue = requestId(req);
+    req.log?.info?.({ requestId: requestIdValue, action: "get_merchant_payment_history" }, "Fetching merchant payment history");
+    const result = await view(
+      "get_merchant_payment_history",
+      [
+        nativeToScVal(merchant, { type: "address" }),
+        cursor ? nativeToScVal(Buffer.from(cursor), { type: "bytes" }) : xdr.ScVal.scvVoid(),
+        nativeToScVal(parseInt(limit, 10), { type: "u32" }),
+        filter,
+        xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_field)]),
+        xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(sort_order)]),
+      ],
+      { requestId: requestIdValue }
+    );
     res.json(scValToNative(result));
   } catch (err) {
     next(err);
