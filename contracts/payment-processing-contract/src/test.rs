@@ -19,7 +19,7 @@ use crate::{
         MerchantCategory, PaymentFilter, PaymentOrder, PaymentStatus, RefundStatus, SortField,
         SortOrder, StatusFilter, SubscriptionPlan,
     },
-    PaymentContract, PaymentContractClient,
+    PaymentContract, PaymentContractClient, MAX_CLEANUP_PERIOD, MIN_CLEANUP_PERIOD,
 };
 
 use soroban_sdk::xdr::ToXdr;
@@ -1732,7 +1732,7 @@ fn test_set_cleanup_period_zero_fails() {
     );
 }
 
-/// T-007: A valid (non-zero) period must be persisted and used by
+/// T-007: A valid (in-range) period must be persisted and used by
 /// `cleanup_expired_payments`.
 /// Closes: <https://github.com/queenannaE/pulsar-contracts/issues/37>
 #[test]
@@ -1753,11 +1753,55 @@ fn test_set_cleanup_period_valid_is_persisted() {
     assert_eq!(timestamp, 100);
 }
 
+/// SC-048: A cleanup period one second below `MIN_CLEANUP_PERIOD` must be
+/// rejected with `InvalidInput`.
+#[test]
+fn test_set_cleanup_period_below_min_fails() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.set_admin(&admins(&env, &admin), &1);
+    assert_eq!(
+        client.try_set_payment_cleanup_period(&admins(&env, &admin), &(MIN_CLEANUP_PERIOD - 1)),
+        Err(Ok(PaymentError::InvalidInput))
+    );
+}
+
+/// SC-048: A cleanup period one second above `MAX_CLEANUP_PERIOD` must be
+/// rejected with `InvalidInput`.
+#[test]
+fn test_set_cleanup_period_above_max_fails() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.set_admin(&admins(&env, &admin), &1);
+    assert_eq!(
+        client.try_set_payment_cleanup_period(&admins(&env, &admin), &(MAX_CLEANUP_PERIOD + 1)),
+        Err(Ok(PaymentError::InvalidInput))
+    );
+}
+
+/// SC-048: `MIN_CLEANUP_PERIOD` is an inclusive lower bound and must be accepted.
+#[test]
+fn test_set_cleanup_period_at_min_accepted() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.set_admin(&admins(&env, &admin), &1);
+    client.set_payment_cleanup_period(&admins(&env, &admin), &MIN_CLEANUP_PERIOD);
+}
+
+/// SC-048: `MAX_CLEANUP_PERIOD` is an inclusive upper bound and must be accepted.
+#[test]
+fn test_set_cleanup_period_at_max_accepted() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.set_admin(&admins(&env, &admin), &1);
+    client.set_payment_cleanup_period(&admins(&env, &admin), &MAX_CLEANUP_PERIOD);
+}
+
 #[test]
 fn test_cleanup_expired_payments() {
     let (env, client) = setup();
     let (admin, merchant, payer, token) = setup_paid_order(&env, &client);
-    client.set_payment_cleanup_period(&admins(&env, &admin), &3600);
+    client.set_payment_cleanup_period(&admins(&env, &admin), &86_400);
     let order2 = PaymentOrder { order_id: bytes(&env, "ORDER_002"), merchant_address: merchant.clone(), payer: payer.clone(), token: token.clone(), amount: 500, description: str(&env, "desc"), expires_at: 0 };
     client.process_payment_with_signature(&payer, &order2, &zero_sig(&env), &zero_key(&env));
     env.ledger().with_mut(|l| l.timestamp = 7201);
@@ -1784,11 +1828,11 @@ fn test_cleanup_expired_payments() {
 fn test_cleanup_some_expired_leaves_recent() {
     let (env, client) = setup();
     let (admin, merchant, payer, token) = setup_paid_order(&env, &client);
-    // Set cleanup period to 3600 seconds
-    client.set_payment_cleanup_period(&admins(&env, &admin), &3600);
+    // Set cleanup period to 1 day (the minimum allowed value)
+    client.set_payment_cleanup_period(&admins(&env, &admin), &86_400);
     // Advance time so ORDER_001 (created at t=0) is now past the cleanup period
-    env.ledger().with_mut(|l| l.timestamp = 7201);
-    // Add a second payment at t=7201 — not yet past the cleanup period
+    env.ledger().with_mut(|l| l.timestamp = 86_401);
+    // Add a second payment at t=86_401 — not yet past the cleanup period
     let order_recent = PaymentOrder {
         order_id: bytes(&env, "ORDER_RECENT"),
         merchant_address: merchant.clone(),

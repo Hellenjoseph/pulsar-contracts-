@@ -47,6 +47,9 @@ pub enum PaymentError {
     InsufficientSignatures = 43,
 
     // General
+    /// Generic invalid input. Also returned by `set_cleanup_period` when the
+    /// requested period is outside the allowed range
+    /// (`MIN_CLEANUP_PERIOD..=MAX_CLEANUP_PERIOD`).
     InvalidInput = 50,
     // StorageError = 51 was removed: the variant was never returned by any
     // code path and only inflated the ABI. See issue SC-009.
