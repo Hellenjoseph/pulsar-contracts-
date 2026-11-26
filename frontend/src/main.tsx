@@ -1,11 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { I18nextProvider } from "react-i18next";
-import i18n from "./lib/i18n";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PayerDashboard } from "./components/PayerDashboard";
+import { MobileNav } from "./components/MobileNav";
+import "./styles/theme.css";
+
+const navItems = [
+  { label: "Dashboard", href: "#dashboard" },
+  { label: "Payers", href: "#payers" },
+  { label: "Claims", href: "#claims" },
+  { label: "Settings", href: "#settings" },
+];
 
 createRoot(document.getElementById("root")!).render(
-  <I18nextProvider i18n={i18n}>
+  <>
+    <MobileNav items={navItems} />
     <PayerDashboard />
-  </I18nextProvider>,
+  </>
 );
