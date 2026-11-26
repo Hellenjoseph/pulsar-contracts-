@@ -499,12 +499,26 @@ Admin only. Returns aggregate stats across all merchants.
 
 ---
 
-#### `get_merchant_stats(merchant, date_start, date_end) → MerchantStats`
+#### `get_merchant_stats(caller, merchant, date_start, date_end) → MerchantStats`
 
-Accessible by the merchant (own stats) or admin (any merchant).
+Returns revenue and refund statistics for a merchant.
+
+| Parameter    | Type      | Notes |
+|---|---|---|
+| `caller`     | `Address` | Authenticated caller — must be the admin or `merchant` |
+| `merchant`   | `Address` | Merchant whose stats are being queried |
+| `date_start` | `Option<u64>` | `null` for no lower bound |
+| `date_end`   | `Option<u64>` | `null` for no upper bound |
+
+**Access control**: `caller` must be authenticated and must be either the
+admin or the merchant whose stats are being queried. Any other address is
+rejected with `Unauthorized`, so integrators must pass the correct caller
+address (and sign the invocation as that address).
 
 - No date range: returns cached stats — O(1).
 - With date range: computes on-demand — O(n) where n = merchant's payment count.
+
+**Errors**: `Unauthorized`, `MerchantNotFound`
 
 ---
 
