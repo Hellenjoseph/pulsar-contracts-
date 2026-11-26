@@ -14,6 +14,8 @@ npm run build && npm start  # production
 
 ## API
 
+All endpoints accept JSON request bodies up to **64kb**. Requests with a larger body are rejected with HTTP `413 Payload Too Large`.
+
 ### Register a webhook
 
 Registration is a two-step handshake. `POST /webhooks` does **not** immediately activate the URL; it creates a **pending** registration and sends a challenge token to the target URL. The registration only becomes **confirmed** (and starts receiving events) after the challenge is echoed back via the verification endpoint.

@@ -556,6 +556,42 @@ jobs:
             exit 1
           fi
 
+  # FE-050: frontend/src/contract.ts is generated from the contract ABI via
+  # `stellar contract bindings typescript` (see frontend/README.md). Fail CI
+  # if the committed file has drifted from what the ABI would generate, so
+  # the TypeScript types cannot silently go out of sync with the contract.
+  frontend-contract-types-sync:
+    name: Frontend contract.ts in sync with ABI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sSL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin stellar
+          stellar --version
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Regenerate frontend/src/contract.ts from the contract ABI
+        run: npm run generate:contract
+        working-directory: frontend
+
+      - name: Fail if generated output differs from committed file
+        run: |
+          if ! git diff --exit-code -- frontend/src/contract.ts; then
+            echo "::error::frontend/src/contract.ts is out of sync with the contract ABI. Run 'npm run generate:contract' in frontend/ and commit the result (see frontend/README.md)."
+            exit 1
+          fi
+
   deploy-testnet:
     # DO-002: Automated testnet deployment job — triggered only on push to main
     # (not on PRs). Uses a CI-managed testnet key stored in GitHub Secrets as

@@ -463,6 +463,34 @@ Same signature as `get_merchant_payment_history` but scoped to a payer.
 
 ---
 
+#### REST: `GET /api/payments`
+
+Returns a paginated page of payments. Accepts the following query parameters:
+
+| Parameter | Type     | Notes |
+|---|---|---|
+| `cursor`  | `string` | Opaque cursor from a previous response. Omit for the first page |
+| `limit`   | `number` | Page size. **Maximum 100** (configurable via the `MAX_PAGE_SIZE` env var) |
+
+**Maximum page size**: `limit` is capped at **100** by default. The cap can be
+raised or lowered by setting the `MAX_PAGE_SIZE` environment variable on the
+server.
+
+**Errors**: If the requested `limit` exceeds the cap, the endpoint responds with
+**HTTP 422 Unprocessable Entity** and a descriptive error body, e.g.:
+
+```json
+{
+  "error": "limit exceeds maximum page size",
+  "max_page_size": 100
+}
+```
+
+Clients should clamp their requested `limit` to the documented maximum (or read
+it from the error response) and retry.
+
+---
+
 #### `get_global_payment_stats(admin, date_start, date_end) → GlobalStats`
 
 Admin only. Returns aggregate stats across all merchants.

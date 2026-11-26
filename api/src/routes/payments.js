@@ -177,6 +177,16 @@ router.get("/", async (req, res, next) => {
       return res.status(422).json({ error: { code: "InvalidAddress", message: "merchant is not a valid Stellar address" } });
     }
 
+    const parsedLimit = parseInt(limit, 10);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > MAX_PAGE_SIZE) {
+      return res.status(422).json({
+        error: {
+          code: "InvalidInput",
+          message: `limit must be between 1 and ${MAX_PAGE_SIZE}`,
+        },
+      });
+    }
+
     const filter = buildFilter({ date_start, date_end, amount_min, amount_max, status });
 
     const requestIdValue = requestId(req);
