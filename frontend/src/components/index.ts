@@ -7,5 +7,5 @@
 export { CheckoutWidget } from "./CheckoutWidget";
 export type { CheckoutWidgetProps } from "./CheckoutWidget";
 export { Spinner, ErrorMessage, SuccessBanner } from "./ContractCallStatus";
-export { NotificationProvider, useNotifications } from "./NotificationCenter";
-export type { Notification, NotificationKind } from "./NotificationCenter";
+export { MobileNav } from "./MobileNav";
+export type { MobileNavProps, MobileNavItem } from "./MobileNav";
