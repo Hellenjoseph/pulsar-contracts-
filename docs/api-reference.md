@@ -582,6 +582,12 @@ call and has been **removed** (SC-052). Clients that previously called
 
 ### Multi-Signature Payments
 
+`required_signers` is capped at `storage::MAX_SIGNERS` (10). A list that is
+empty, exceeds this cap, or contains duplicate addresses is rejected with
+`PaymentError::InvalidInput`. The cap bounds signature-list storage growth
+and keeps `sign_multisig_payment`/`execute_multisig_payment` within Soroban
+resource limits.
+
 #### `initiate_multisig_payment(initiator, payment_id, order, required_signers)`
 
 #### `sign_multisig_payment(signer: Address, payment_id: Bytes)`
