@@ -3323,6 +3323,58 @@ fn test_get_merchant_stats_multiple_merchants() {
     assert_eq!(stats2.total_volume, 2000);
 }
 
+// ── SC-047: description length limit tests ────────────────────────────────────
+
+/// SC-047: A description of exactly MAX_DESCRIPTION_LEN (256) bytes must be
+/// accepted; a 257-byte description must be rejected with InvalidInput.
+#[test]
+fn test_description_length_limit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(PaymentContract, ());
+    let client = PaymentContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let merchant = Address::generate(&env);
+    let payer = Address::generate(&env);
+    let token = create_token(&env, &admin);
+
+    let seed = [11u8; 32];
+    let signing_key = SigningKey::from_bytes(&seed);
+    let pub_key_bytes = signing_key.verifying_key().to_bytes();
+    let merchant_pub_key = BytesN::from_array(&env, &pub_key_bytes);
+
+    client.set_admin(&admins(&env, &admin), &1);
+    client.register_merchant(
+        &merchant,
+        &str(&env, "DescStore"),
+        &str(&env, "desc"),
+        &str(&env, "desc@store.com"),
+        &MerchantCategory::Retail,
+        &Some(merchant_pub_key.clone()),
+    );
+    mint(&env, &token, &payer, 10_000);
+
+    // Exactly 256 bytes — must be accepted.
+    let mut ok_order = make_order(&env, &merchant, &payer, &token);
+    ok_order.order_id = bytes(&env, "DESC_OK");
+    ok_order.description = str(&env, &"d".repeat(256));
+    let (_, ok_sig) = sign_order_xdr(&env, &ok_order, &seed);
+    client.process_payment_with_signature(&payer, &ok_order, &ok_sig, &merchant_pub_key);
+    let record = client.get_payment_by_id(&payer, &bytes(&env, "DESC_OK"));
+    assert_eq!(record.amount, 1000);
+
+    // 257 bytes — must be rejected with InvalidInput.
+    let mut bad_order = make_order(&env, &merchant, &payer, &token);
+    bad_order.order_id = bytes(&env, "DESC_BAD");
+    bad_order.description = str(&env, &"d".repeat(257));
+    let (_, bad_sig) = sign_order_xdr(&env, &bad_order, &seed);
+    assert_eq!(
+        client.try_process_payment_with_signature(&payer, &bad_order, &bad_sig, &merchant_pub_key),
+        Err(Ok(PaymentError::InvalidInput))
+    );
+}
+
 // ── T-010: Zero and negative amount tests for process_payment_with_signature ──
 
 #[test]

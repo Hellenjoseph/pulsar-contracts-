@@ -63,7 +63,7 @@
     },
     {
       "name": "process_payment_with_signature",
-      "doc": "Transfers tokens from payer to merchant after verifying an ed25519 signature over the PaymentOrder.",
+      "doc": "Transfers tokens from payer to merchant after verifying an ed25519 signature over the PaymentOrder. order.description must not exceed 256 bytes (MAX_DESCRIPTION_LEN); longer descriptions are rejected with InvalidInput (code 50).",
       "inputs": [
         { "name": "payer",                "type": "Address" },
         { "name": "order",                "type": "PaymentOrder" },
@@ -307,7 +307,7 @@
         { "name": "payer",             "type": "Address" },
         { "name": "token",             "type": "Address" },
         { "name": "amount",            "type": "i128" },
-        { "name": "description",       "type": "String" },
+        { "name": "description",       "type": "String", "doc": "Max 256 bytes (MAX_DESCRIPTION_LEN). Exceeding it returns InvalidInput (code 50)." },
         { "name": "expires_at",        "type": "u64",    "doc": "Unix timestamp (seconds). 0 = never expires." }
       ]
     },
@@ -323,7 +323,7 @@
         { "name": "pending_refund_amount", "type": "i128" },
         { "name": "status",                "type": "PaymentStatus" },
         { "name": "paid_at",               "type": "u64" },
-        { "name": "description",           "type": "String" }
+        { "name": "description",           "type": "String", "doc": "Max 256 bytes (MAX_DESCRIPTION_LEN). Exceeding it returns InvalidInput (code 50)." }
       ]
     },
     "RefundRecord": {
