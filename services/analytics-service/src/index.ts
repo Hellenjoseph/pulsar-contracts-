@@ -1,55 +1,72 @@
 import express from "express";
-import cors from "cors";
+import { randomUUID } from "crypto";
 import { createAnalyticsRouter } from "./api";
+import {
+  requestIdMiddleware,
+  errorHandler,
+  notFoundHandler,
+} from "@shared/error-middleware";
 
 const PORT = Number(process.env.PORT ?? 3100);
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
-const NODE_ENV = process.env.NODE_ENV ?? "development";
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ?? "";
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL environment variable is required");
   process.exit(1);
 }
 
-function parseAllowedOrigins(value: string): string[] {
-  return value
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+let shuttingDown = false;
+let inFlightOperations = 0;
+let resolveDrained: (() => void) | null = null;
+
+function trackOperation<T>(operation: Promise<T>): Promise<T> {
+  inFlightOperations += 1;
+  return operation.finally(() => {
+    inFlightOperations -= 1;
+    if (shuttingDown && inFlightOperations === 0 && resolveDrained) {
+      resolveDrained();
+    }
+  });
 }
 
-function buildCorsOptions(): cors.CorsOptions {
-  if (NODE_ENV === "production") {
-    const allowedOrigins = parseAllowedOrigins(ALLOWED_ORIGINS);
-    return {
-      origin: (origin, callback) => {
-        // Allow same-origin / non-browser requests (no Origin header).
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-          return;
-        }
-        // Default deny in production.
-        callback(null, false);
-      },
-    };
+function waitForDrain(timeoutMs: number): Promise<void> {
+  if (inFlightOperations === 0) {
+    return Promise.resolve();
   }
-
-  // Development: allow all origins.
-  return { origin: true };
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      resolveDrained = null;
+      resolve();
+    }, timeoutMs);
+    resolveDrained = () => {
+      clearTimeout(timer);
+      resolveDrained = null;
+      resolve();
+    };
+  });
 }
 
 const app = express();
-app.use(cors(buildCorsOptions()));
+app.use(requestIdMiddleware);
 app.use(express.json());
+
+app.get("/health", (_req, res) => {
+  if (shuttingDown) {
+    res.status(503).json({ status: "shutting_down" });
+    return;
+  }
+  res.status(200).json({ status: "ok" });
+});
+
 app.use(createAnalyticsRouter(DATABASE_URL));
+
+// 404 handler for unmatched routes
+app.use(notFoundHandler);
+
+// Shared error middleware must be registered last
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`[analytics] Service listening on port ${PORT}`);
 });
-
-export { app, buildCorsOptions, parseAllowedOrigins };

@@ -191,72 +191,136 @@ Record, outside your terminal history:
 Only after this verification step should the mainnet contract ID be shared
 with downstream integrators or put in front of real payment volume.
 
-## Environment matrix
+## Off-chain service Docker images
 
-The project runs four environments. Each has a distinct purpose, branch
-trigger, GitHub Actions environment, and secret — do not mix them up.
+Each release tag publishes pre-built Docker images for the off-chain
+services (`indexer`, `webhook`, and `analytics-service`) to the GitHub
+Container Registry (ghcr.io). You do not need to clone the repository or
+build from source to self-host them — pull the image matching the release
+you are running against:
 
-| Environment | Purpose | Deploy trigger | GitHub environment | Secret(s) | Network |
-| --- | --- | --- | --- | --- | --- |
-| **local** | Day-to-day development, unit/integration tests | none (developer machine) | — | none (local `stellar keys`) | local sandbox / standalone |
-| **staging** | Pre-testnet validation on an isolated, stable environment | push to `develop` | `staging` | `STAGING_SECRET_KEY` | Soroban **Futurenet** (or a dedicated testnet account) |
-| **testnet** | Public integration testbed for downstream integrators | push to `main` | `testnet` | `TESTNET_SECRET_KEY` | Stellar testnet |
-| **mainnet** | Production, real-value traffic | manual only (this guide) | `mainnet` | dedicated mainnet deployer key in a secrets manager | Stellar public network |
-
-### Branch → environment mapping
-
-- `develop` → **staging**. Every push to `develop` deploys the contract to
-  Futurenet via the `deploy-staging` job in
-  [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Staging is the
-  first place a change runs against a live network; it is disposable and
-  may be reset at any time.
-- `main` → **testnet**. Pushes to `main` deploy to testnet via the
-  `deploy-testnet` job. Testnet is the stable, integrator-facing network, so
-  only changes that have already soaked on staging should reach `main`.
-- **mainnet** → manual only. There is no automated mainnet deploy; follow
-  the step-by-step flow in this guide. Mainnet deploys are intentionally
-  checklist-gated and performed by an operator.
-
-### Promotion flow
-
-```
-feature branch ──PR──▶ develop ──(auto)──▶ staging (Futurenet)
-                          │
-                          └──PR──▶ main ──(auto)──▶ testnet
-                                        │
-                                        └──(manual, this guide)──▶ mainnet
+```bash
+# Replace <org>/<repo> with the GitHub owner/repository and <version> with
+# the release semver tag (e.g. v1.2.3). The `latest` tag tracks the most
+# recent release.
+docker pull ghcr.io/<org>/<repo>/indexer:<version>
+docker pull ghcr.io/<org>/<repo>/webhook:<version>
+docker pull ghcr.io/<org>/<repo>/analytics-service:<version>
 ```
 
-1. Land changes on a feature branch and open a PR against `develop`.
-2. Merging to `develop` auto-deploys to **staging**. Validate there,
-   including running the manual load-test workflow
-   ([`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml))
-   against the staging contract ID.
-3. Once staging is green and the load test passes, open a PR from `develop`
-   to `main`. Merging to `main` auto-deploys to **testnet**.
-4. After testnet has been validated by integrators, perform the manual
-   mainnet deployment described in this guide.
+Images are tagged with both the release semver tag and `latest`. For
+production, always pin an explicit semver tag rather than `latest` so that
+redeploys are reproducible and rollbacks are a tag change away.
 
-### GitHub environments and secrets
+If the packages are private, authenticate first with a GitHub token that has
+`read:packages` scope:
 
-Configure these under **Settings → Environments** in the repository:
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+```
 
-- `staging` — holds `STAGING_SECRET_KEY` (a Futurenet/testnet key used only
-  for staging deploys). No required reviewers.
-- `testnet` — holds `TESTNET_SECRET_KEY` (the testnet deployer key).
-- `mainnet` — holds the mainnet deployer key; enable required reviewers so
-  a mainnet deploy cannot happen without a second pair of eyes.
+### Production `docker-compose.override.yml`
 
-Each environment's secret is scoped to that environment only, so a staging
-job cannot read the testnet or mainnet keys.
+The repository ships a base `docker-compose.yml` for local development. For
+production, layer a `docker-compose.override.yml` next to it that swaps the
+locally built services for the published images, pins the release tag, and
+sets production environment variables and port mappings. Compose merges the
+override automatically when you run `docker compose up` from the same
+directory.
+
+```yaml
+# docker-compose.override.yml — production overrides
+services:
+  indexer:
+    image: ghcr.io/<org>/<repo>/indexer:${RELEASE_TAG:?set RELEASE_TAG to the release semver}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      STELLAR_RPC_URL: ${STELLAR_RPC_URL:-https://mainnet.sorobanrpc.com}
+      STELLAR_NETWORK: public
+      CONTRACT_ID: ${CONTRACT_ID:?set CONTRACT_ID to the deployed contract address}
+      START_LEDGER: ${START_LEDGER:-0}
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  webhook:
+    image: ghcr.io/<org>/<repo>/webhook:${RELEASE_TAG:?set RELEASE_TAG to the release semver}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?set WEBHOOK_SIGNING_SECRET}
+      WEBHOOK_MAX_RETRIES: ${WEBHOOK_MAX_RETRIES:-5}
+    ports:
+      - "8082:8082"
+    depends_on:
+      - indexer
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  analytics-service:
+    image: ghcr.io/<org>/<repo>/analytics-service:${RELEASE_TAG:?set RELEASE_TAG to the release semver}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      ANALYTICS_PORT: "8083"
+    ports:
+      - "8083:8083"
+    depends_on:
+      - indexer
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+```
+
+Set the required values in a `.env` file next to the compose files (never
+commit it), then start the stack:
+
+```bash
+cat > .env <<'EOF'
+RELEASE_TAG=v1.2.3
+CONTRACT_ID=C...
+DATABASE_URL=postgres://user:pass@db:5432/payments
+WEBHOOK_SIGNING_SECRET=change-me
+EOF
+
+docker compose pull
+docker compose up -d
+```
+
+Notes for production:
+- The `build: !reset null` lines disable the base file's local build context
+  so Compose only ever pulls the pinned image. If your Compose version does
+  not support `!reset`, remove the `build:` keys from the base file or run
+  with `--no-build`.
+- The `${VAR:?message}` syntax makes Compose fail fast if a required value
+  is missing, rather than starting a service with an empty secret.
+- Port mappings above are the services' defaults; adjust them to match your
+  reverse proxy / load balancer layout. Do not expose these ports directly
+  to the public internet — terminate TLS at a proxy in front of them.
+- To roll back, change `RELEASE_TAG` to the previous release and re-run
+  `docker compose pull && docker compose up -d`.
 
 ## See also
 
 - [`README.md`](../README.md) — local/testnet setup, environment seeding,
   general contract usage.
-- [`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml) —
-  manual load-test workflow, run against staging before promoting to
-  testnet.
+- [`Dockerfile`](../Dockerfile) — multi-stage production image definition.
 - [`docs/reproducible-builds.md`](reproducible-builds.md) — rebuilding the
   WASM byte-for-byte to verify what was deployed.
 - [`docs/security-audit.md`](security-audit.md) — audit status and scope.
