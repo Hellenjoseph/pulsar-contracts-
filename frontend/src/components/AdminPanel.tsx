@@ -58,6 +58,7 @@ function AdminPanelContent({
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [tab, setTab] = useState<"stats" | "merchants" | "log">("stats");
+  const [pendingDeactivation, setPendingDeactivation] = useState<Merchant | null>(null);
 
   async function loadStats() {
     await statsCall.execute(async () => {
@@ -251,7 +252,7 @@ function AdminPanelContent({
                     <td className="py-2">
                       {m.active && (
                         <button
-                          onClick={() => handleDeactivate(m.address)}
+                          onClick={() => setPendingDeactivation(m)}
                           disabled={deactivateCall.state.status === "loading"}
                           className="text-xs text-red-600 dark:text-red-400 underline disabled:opacity-50"
                         >
@@ -264,6 +265,38 @@ function AdminPanelContent({
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Deactivation confirmation modal */}
+      {pendingDeactivation && (
+        <div className="admin-modal-overlay">
+          <div className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="deactivate-modal-title">
+            <h2 id="deactivate-modal-title" className="admin-modal-title">
+              Deactivate {pendingDeactivation.name}? This cannot be undone from this UI.
+            </h2>
+            <p className="admin-modal-warning">
+              ⚠️ This will immediately deactivate the merchant and cannot be reversed from this interface.
+            </p>
+            <div className="admin-modal-actions">
+              <button
+                onClick={() => {
+                  const address = pendingDeactivation.address;
+                  setPendingDeactivation(null);
+                  handleDeactivate(address);
+                }}
+                className="admin-modal-confirm"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setPendingDeactivation(null)}
+                className="admin-modal-cancel"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
